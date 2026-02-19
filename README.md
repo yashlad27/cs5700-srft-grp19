@@ -2,15 +2,15 @@ Secure File transfer over UDP
 
 Adding guarantee delivery for UDP + Reliability and also adding encryption for it
 
-File
-  ↓
-Our Protocol (Reliability + Security)
-  ↓
-UDP
-  ↓
-IP
-  ↓
-Network
+File  
+  ↓  
+Our Protocol (Reliability + Security)  
+  ↓  
+UDP  
+  ↓  
+IP  
+  ↓  
+Network  
 
 PHASE - 1 : MAKE UDP RELIABLE
 need to tackle problems of udp like:
