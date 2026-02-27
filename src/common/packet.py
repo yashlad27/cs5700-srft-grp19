@@ -64,7 +64,7 @@ def decode_packet(raw_data: bytes) -> dict | None:
     except struct.error:
         return None
     
-    payload = raw_data[CUSTOM_HEADER_SIZE]
+    payload = raw_data[CUSTOM_HEADER_SIZE:]
     
     if len(payload) != payload_length:
         return None
