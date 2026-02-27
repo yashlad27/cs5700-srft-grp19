@@ -169,6 +169,22 @@ class TransferStats:
             }
         """
         with self.lock:
+            # Calculate duration
+            duration = 0.0
+            if self.start_time is not None and self.end_time is not None:
+                duration = self.end_time - self.start_time
+            
+            # Calculate throughput
+            throughput = 0.0
+            if duration > 0:
+                bits_received = self.bytes_received * 8
+                throughput = bits_received / (duration * 1_000_000)
+            
+            # Calculate retransmit rate
+            retransmit_rate = 0.0
+            if self.packets_sent > 0:
+                retransmit_rate = (self.packets_retransmitted / self.packets_sent) * 100
+            
             return {
                 'packets_sent': self.packets_sent,
                 'packets_received': self.packets_received,
@@ -177,9 +193,9 @@ class TransferStats:
                 'acks_received': self.acks_received,
                 'bytes_sent': self.bytes_sent,
                 'bytes_received': self.bytes_received,
-                'duration_seconds': self.get_duration(),
-                'throughput_mbps': self.get_throughput(),
-                'retransmit_rate_percent': self.get_retransmit_rate()
+                'duration_seconds': duration,
+                'throughput_mbps': throughput,
+                'retransmit_rate_percent': retransmit_rate
             }
     
     def print_report(self):
