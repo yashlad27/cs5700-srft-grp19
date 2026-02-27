@@ -25,20 +25,20 @@ to do:
 3. resend missing pages (retransmission)
 4. check if pages are damaged (checksum)
 
-'!BBHHHBBH4s4s'
- │ │││││││└─ 4-byte string (destination IP)
- │ ││││││└── 4-byte string (source IP)
- │ │││││└─── 1 byte (header checksum - high byte)
- │ ││││└──── 1 byte (header checksum - low byte)
- │ │││└───── 1 byte (protocol = 17 for UDP)
- │ ││└────── 1 byte (TTL)
- │ │└─────── 2 bytes (flags + fragment offset)
- │ └──────── 2 bytes (identification)
- └────────── 2 bytes (total length)
+'!BBHHHBBH4s4s'  
+ │ │││││││└─ 4-byte string (destination IP)  
+ │ ││││││└── 4-byte string (source IP)  
+ │ │││││└─── 1 byte (header checksum - high byte)  
+ │ ││││└──── 1 byte (header checksum - low byte)  
+ │ │││└───── 1 byte (protocol = 17 for UDP)  
+ │ ││└────── 1 byte (TTL)  
+ │ │└─────── 2 bytes (flags + fragment offset)  
+ │ └──────── 2 bytes (identification)  
+ └────────── 2 bytes (total length)  
 
-Total size: 1+1+2+2+2+1+1+2+4+4 = 20 bytes (IP header)
+Total size: 1+1+2+2+2+1+1+2+4+4 = 20 bytes (IP header)  
 
-essentially => MINI TCP
+essentially => MINI TCP   
 
 
 
