@@ -1,6 +1,8 @@
 # entry point
 # server/srtf_udp_server.py
 from __future__ import annotations
+
+import argparse
 import socket
 import select
 
@@ -41,3 +43,28 @@ def run_server(cfg: ServerConfig):
 
     sock.close()
     print("[server] stopped")
+
+
+def main():
+    # we can adjust this part if we need to upload it to aws.
+    parser = argparse.ArgumentParser(description="SRTF UDP Server")
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=9000)
+    parser.add_argument("--out", default="./received")
+    parser.add_argument("--chunk", type=int, default=1200)
+    parser.add_argument("--window", type=int, default=64)
+    parser.add_argument("--rto", type=int, default=200, help="retransmit timeout (ms)")
+    args = parser.parse_args()
+
+    cfg = ServerConfig(
+        listen_ip=args.host,
+        listen_port=args.port,
+        out_dir=args.out,
+        chunk_size=args.chunk,
+        window_size=args.window,
+        rto_ms=args.rto,
+    )
+    run_server(cfg)
+
+if __name__ == "__main__":
+    main()
