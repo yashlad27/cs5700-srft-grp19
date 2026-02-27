@@ -1,93 +1,87 @@
-# src/common/protocol.py
-from __future__ import annotations
-import enum
+# encode and decode custom protocol headers (15 bytes)
+# Functions: encode_packet(), decode_packet()
+# Must handle: seq_num, ack_num, flags, checksum, payload_length, flags, conn_id
+
 import struct
-import zlib
-from dataclasses import dataclass
-from typing import Tuple
+from common.constants import HEADER_FORMAT, CUSTOM_HEADER_SIZE, MAX_PAYLOAD_SIZE
+from common.checksum import compute_checksum, verify_checksum
 
-class MsgType(enum.IntEnum):
-    DATA = 0
-    ACK = 1
-    HELLO = 2
-    FIN = 3
-
-VERSION = 1
-HEADER_FMT = "!BBIIHI"
-HEADER_SIZE = struct.calcsize(HEADER_FMT)
-
-@dataclass
-class Packet:
-    msg_type: MsgType
-    seq: int = 0
-    ack: int = 0
-    payload: bytes = b""
-
-def _crc32(data: bytes) -> int:
-    return zlib.crc32(data) & 0xFFFFFFFF
-
-def encode_packet(pkt: Packet) -> bytes:
-    payload = pkt.payload or b""
-    payload_len = len(payload)
-
-    # checksum field initially 0 for computing
-    header_wo_checksum = struct.pack(
-        HEADER_FMT,
-        VERSION,
-        int(pkt.msg_type),
-        pkt.seq,
-        pkt.ack,
-        payload_len,
-        0
-    )
-
-    checksum = _crc32(header_wo_checksum + payload)
-
-    header = struct.pack(
-        HEADER_FMT,
-        VERSION,
-        int(pkt.msg_type),
-        pkt.seq,
-        pkt.ack,
-        payload_len,
-        checksum
-    )
-    return header + payload
-
-def decode_packet(raw: bytes) -> Tuple[Packet, bool]:
+def encode_packet(seq_num: int, ack_num: int, flags: int, payload:bytes, conn_id: int) -> bytes:
     """
-    Returns (packet, ok). ok=False means checksum/version/length invalid.
+    encode packet: 15 byte header + payload
+
+    Algorithm:
+    1. validate inputs
+    2. compute_checksum 
+    3. pack header with actual checksum
+    4. append payload
+
     """
-    if len(raw) < HEADER_SIZE:
-        return Packet(MsgType.DATA), False
 
-    version, t, seq, ack, payload_len, checksum = struct.unpack(
-        HEADER_FMT, raw[:HEADER_SIZE]
+    if len(payload) > MAX_PAYLOAD_SIZE:
+        raise ValueError(f"Payload size {len(payload)} exceeds the max size {MAX_PAYLOAD_SIZE}.")
+    
+
+    payload_length = len(payload)
+
+    header_no_checksum = struct.pack(
+        HEADER_FORMAT, seq_num, ack_num, 0, payload_length, flags, conn_id
+    )
+    
+    # 0 is placeholder as checksum hasnt been calculated yet.
+
+    data_to_checksum = header_no_checksum + payload
+    checksum = compute_checksum(data_to_checksum)
+
+    final_header = struct.pack(
+        HEADER_FORMAT, seq_num, ack_num, checksum, payload_length, flags, conn_id
     )
 
-    if version != VERSION:
-        return Packet(MsgType.DATA), False
-    if len(raw) != HEADER_SIZE + payload_len:
-        return Packet(MsgType.DATA), False
+    return final_header + payload
 
-    payload = raw[HEADER_SIZE:HEADER_SIZE + payload_len]
 
-    header_wo_checksum = struct.pack(
-        HEADER_FMT,
-        version,
-        t,
-        seq,
-        ack,
-        payload_len,
-        0
-    )
-    calc = _crc32(header_wo_checksum + payload)
-    if calc != checksum:
-        return Packet(MsgType.DATA), False
+def decode_packet(raw_data: bytes) -> dict | None:
+    """
+    decode the incoming packet bytes to a dict
+
+    Algorithm:
+    1. validate packet (needs to be atleast 15 bytes)
+    2. unpack header
+    3. extract payload
+    4. verify checksum
+    5. validate payload_length so that it matches actual payload
+    """
+
+    if len(raw_data) < CUSTOM_HEADER_SIZE:
+        return None
+    
+    header_bytes = raw_data[:CUSTOM_HEADER_SIZE]
 
     try:
-        msg_type = MsgType(t)
-    except ValueError:
-        return Packet(MsgType.DATA), False
+        seq_num, ack_num, checksum, payload_length, flags, conn_id = struct.unpack(
+            HEADER_FORMAT, header_bytes
+        )
+    except struct.error:
+        return None
+    
+    payload = raw_data[CUSTOM_HEADER_SIZE]
+    
+    if len(payload) != payload_length:
+        return None
+    
+    header_no_checksum = struct.pack(
+        HEADER_FORMAT, seq_num, ack_num, 0, payload_length, flags, conn_id
+    )
 
-    return Packet(msg_type=msg_type, seq=seq, ack=ack, payload=payload), True
+    if not verify_checksum(header_no_checksum + payload, checksum):
+        return None
+    
+    return {
+        'seq_num': seq_num,
+        'ack_num': ack_num,
+        'checksum': checksum,
+        'payload_length': payload_length,
+        'flags': flags,
+        'conn_id': conn_id,
+        'payload': payload
+    }

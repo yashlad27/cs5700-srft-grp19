@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple, Optional
 
-from server_state import ServerState
-from window_manager import WindowManager
-from common.constants import FLAG_ACK, FLAG_FIN
+from server.server_state import ServerState
+from server.window_manager import WindowManager
+from common.constants import FLAG_ACK, FLAG_FIN, FLAG_DATA
 from common.packet import decode_packet
 
 ClientAddr = Tuple[str, int]
@@ -93,7 +93,7 @@ class Receiver:
                 self.state.stats["delivered"] += 1
                 self.state.file_ctx.written_chunks += 1
 
-    def _decode_and_verify(self, raw: bytes, FLAG_HELLO=None):
+    def _decode_and_verify(self, raw: bytes):
         """
         Decode and verify a packet.
         - Uses common.packet.decode_packet(), which already verifies checksum.
@@ -105,14 +105,13 @@ class Receiver:
 
         flags = pkt["flags"]
 
-        # Normalize "type" so the rest of receiver code is clean.
-        # If you们 flags 不是 bitmask，而是枚举值，就按实际改。
+        # Normalize "type" so the rest of receiver code is clean
         if flags & FLAG_ACK:
             msg_type = "ACK"
         elif flags & FLAG_FIN:
             msg_type = "FIN"
-        elif "FLAG_HELLO" in globals() and (flags & FLAG_HELLO):
-            msg_type = "HELLO"
+        elif flags & FLAG_DATA:
+            msg_type = "DATA"
         else:
             # default treat as DATA if no explicit type bit set
             msg_type = "DATA"
@@ -123,6 +122,6 @@ class Receiver:
             "ack": pkt["ack_num"],
             "flags": flags,
             "conn_id": pkt["conn_id"],
-            "payload": pkt["payload"],  # bytes
+            "payload": pkt["payload"],
             "payload_len": pkt["payload_length"]
         }
