@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple, Optional
 
-from .server_state import ServerState
-from .window_manager import WindowManager
-from ..common.constants import FLAG_ACK, FLAG_FIN
-from ..common.packet import decode_packet
+from server_state import ServerState
+from window_manager import WindowManager
+from common.constants import FLAG_ACK, FLAG_FIN
+from common.packet import decode_packet
 
 ClientAddr = Tuple[str, int]
 

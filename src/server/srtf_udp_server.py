@@ -6,11 +6,11 @@ import argparse
 import socket
 import select
 
-from .server_state import ServerState, ServerConfig
-from .window_manager import WindowManager
-from .receiver import Receiver
-from .sender import Sender
-from .retransmit_queue import RetransmitQueue
+from server_state import ServerState, ServerConfig
+from window_manager import WindowManager
+from receiver import Receiver
+from sender import Sender
+from retransmit_queue import RetransmitQueue
 
 def run_server(cfg: ServerConfig):
     state = ServerState(cfg=cfg)

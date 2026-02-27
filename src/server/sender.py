@@ -3,8 +3,8 @@
 from __future__ import annotations
 from typing import Tuple, Optional
 import socket
-from .server_state import ServerState
-from ..common.packet import encode_packet, Packet, MsgType
+from server_state import ServerState
+from common.packet import encode_packet, Packet, MsgType
 
 ClientAddr = Tuple[str, int]
 
