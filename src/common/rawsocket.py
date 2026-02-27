@@ -143,7 +143,7 @@ def build_udp_header(src_port: int, dst_port: int, payload_length: int) -> bytes
 
     return udp_header
 
-def  send_packet(sock: socket.socket, packet_bytes: bytes, src_ip: str, dst_ip: str, src_port: int, dst_port: int) -> None:
+def send_packet(sock: socket.socket, packet_bytes: bytes, src_ip: str, dst_ip: str, src_port: int, dst_port: int) -> None:
     """
     Send complete packet with IP + UDP + Custom headers
     

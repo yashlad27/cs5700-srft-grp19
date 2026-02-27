@@ -19,7 +19,7 @@ def encode_packet(seq_num: int, ack_num: int, flags: int, payload:bytes, conn_id
     """
 
     if len(payload) > MAX_PAYLOAD_SIZE:
-        raise ValueError(f"Payload size {len(payload)} exceeds the max size {MAX_PAYLOAD_SIZE}.")
+        raise ValueError(f"Payload size {len(payload)} exceeds maximum {MAX_PAYLOAD_SIZE}.")
     
 
     payload_length = len(payload)
@@ -64,7 +64,7 @@ def decode_packet(raw_data: bytes) -> dict | None:
     except struct.error:
         return None
     
-    payload = raw_data[CUSTOM_HEADER_SIZE]
+    payload = raw_data[CUSTOM_HEADER_SIZE:]
     
     if len(payload) != payload_length:
         return None
