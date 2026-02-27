@@ -7,11 +7,11 @@ from typing import Tuple, Optional
 
 from .server_state import ServerState
 from .window_manager import WindowManager
+from ..common.constants import FLAG_ACK, FLAG_FIN
+from ..common.packet import decode_packet
 
 ClientAddr = Tuple[str, int]
 
-# TODO: need to integrate common protocol utils here (decode + checksum verify)
-# from common.constant import decode_packet, Packet, MsgType, verify_checksum
 
 @dataclass
 class ReceiveResult:
@@ -93,10 +93,36 @@ class Receiver:
                 self.state.stats["delivered"] += 1
                 self.state.file_ctx.written_chunks += 1
 
-    def _decode_and_verify(self, raw: bytes):
+    def _decode_and_verify(self, raw: bytes, FLAG_HELLO=None):
         """
-        Replace this with your real common.decode + checksum/tag verify.
-        Expected to return dict-like: {"type","seq","payload"...}
+        Decode and verify a packet.
+        - Uses common.packet.decode_packet(), which already verifies checksum.
+        - Returns normalized dict for internal handling, or None if invalid/corrupt.
         """
-        # TODO: integrate common protocol
-        return None
+        pkt = decode_packet(raw)
+        if pkt is None:
+            return None
+
+        flags = pkt["flags"]
+
+        # Normalize "type" so the rest of receiver code is clean.
+        # If you们 flags 不是 bitmask，而是枚举值，就按实际改。
+        if flags & FLAG_ACK:
+            msg_type = "ACK"
+        elif flags & FLAG_FIN:
+            msg_type = "FIN"
+        elif "FLAG_HELLO" in globals() and (flags & FLAG_HELLO):
+            msg_type = "HELLO"
+        else:
+            # default treat as DATA if no explicit type bit set
+            msg_type = "DATA"
+
+        return {
+            "type": msg_type,
+            "seq": pkt["seq_num"],
+            "ack": pkt["ack_num"],
+            "flags": flags,
+            "conn_id": pkt["conn_id"],
+            "payload": pkt["payload"],  # bytes
+            "payload_len": pkt["payload_length"]
+        }

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Tuple, Optional
 import socket
 from .server_state import ServerState
+from ..common.packet import encode_packet, Packet, MsgType
 
 ClientAddr = Tuple[str, int]
 
@@ -25,6 +26,4 @@ class Sender:
             self.state.stats["acks_out"] += 1
 
     def _build_ack(self, ack_seq: int) -> bytes:
-        # TODO: use your common builder
-        # return build_ack_packet(conn_id=..., ack=ack_seq, ...)
-        return b""
+        return encode_packet(Packet(msg_type=MsgType.ACK, ack=ack_seq))
