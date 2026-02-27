@@ -1,6 +1,7 @@
 # state management for client
 from dataclasses import dataclass, field
 from typing import Dict, Optional, BinaryIO
+from common.constants import MAX_PAYLOAD_SIZE
 
 @dataclass
 class ClientState:
@@ -22,6 +23,15 @@ class ClientState:
         '''
         store a chunk in the buffer if it is not duplicated
         '''
+        # Validate payload size
+        if len(payload) > MAX_PAYLOAD_SIZE:
+            return  # Invalid payload size, drop packet
+        
+        # Validate sequence number bounds (prevent memory exhaustion)
+        # Allow up to 1 million chunks max (safety check)
+        if seq > 1_000_000:
+            return  # Invalid sequence number, drop packet
+        
         # received duplicated packets (ignore)
         if seq < self.expected_seq: 
             self.p_duplicate += 1

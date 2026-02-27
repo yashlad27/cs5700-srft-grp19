@@ -64,5 +64,7 @@ def send_syn_request(
             if packet["flags"] == FLAG_SYN_ACK:
                 return True
             
-        # no SYN_ACK returned, retry
-        return False
+        # no SYN_ACK returned, retry next attempt
+    
+    # All retries exhausted
+    return False
