@@ -13,6 +13,7 @@ from server.window_manager import WindowManager
 from server.receiver import Receiver
 from server.sender import Sender
 from server.retransmit_queue import RetransmitQueue
+from common.rawsocket import create_recv_socket, create_send_socket
 
 # Global flag for graceful shutdown
 shutdown_requested = False
@@ -29,8 +30,7 @@ def run_server(cfg: ServerConfig):
     state = ServerState(cfg=cfg)
     wm = WindowManager(window_size=cfg.window_size)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((cfg.listen_ip, cfg.listen_port))
+    sock = create_recv_socket(cfg.listen_port)
     sock.setblocking(False)
 
     receiver = Receiver(state, wm)
