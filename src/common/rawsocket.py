@@ -174,8 +174,15 @@ def send_packet(sock: socket.socket, packet_bytes: bytes, src_ip: str, dst_ip: s
     # ip header + udp header + custom packet
     full_packet = ip_header + udp_header + packet_bytes
 
-    # send packet
-    sock.sendto(full_packet, (dst_ip, 0))
+    # For raw sockets with IP_HDRINCL, some systems need just IP, others need (ip, 0)
+    # Try (ip, 0) first, which works on most systems
+    try:
+        sock.sendto(full_packet, (dst_ip, 0))
+    except OSError as e:
+        # If that fails, try just the IP string (some macOS versions)
+        if e.errno == 22:  # Invalid argument
+            # On some systems, need to use sendto with just destination
+            sock.sendto(full_packet, (dst_ip, ))
 
 def receive_packet(sock: socket.socket, expected_port: int, timeout: float = None) -> tuple | None:
     """
