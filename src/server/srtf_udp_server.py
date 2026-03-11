@@ -50,17 +50,29 @@ def run_server(cfg: ServerConfig):
         r, _, _ = select.select([recv_sock], [], [], 0.01)
 
         if r:
+            print("[DEBUG] Socket has data, calling receive_packet()")
             # Use receive_packet() to parse raw socket data
-            result = receive_packet(recv_sock, cfg.listen_port, timeout=0)
-            if result is None:
+            try:
+                result = receive_packet(recv_sock, cfg.listen_port, timeout=0)
+                print(f"[DEBUG] receive_packet returned: {result is not None}")
+                if result is None:
+                    print("[DEBUG] Packet filtered out or timeout")
+                    continue
+                
+                packet_dict, sender_ip, src_port = result
+                print(f"[DEBUG] Packet from {sender_ip}:{src_port}, type={packet_dict.get('type', 'UNKNOWN')}")
+                # Reconstruct addr tuple for compatibility
+                addr = (sender_ip, src_port)
+                
+                # Pass the decoded packet to receiver (already parsed)
+                print(f"[DEBUG] Calling handle_decoded_packet()")
+                res = receiver.handle_decoded_packet(packet_dict, addr)
+                print(f"[DEBUG] handle_decoded_packet returned: ack_seq={res.ack_seq}, close={res.close}")
+            except Exception as e:
+                print(f"[DEBUG] EXCEPTION in packet handling: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
-            
-            packet_dict, sender_ip, src_port = result
-            # Reconstruct addr tuple for compatibility
-            addr = (sender_ip, src_port)
-            
-            # Pass the decoded packet to receiver (already parsed)
-            res = receiver.handle_decoded_packet(packet_dict, addr)
             
             # Handle SYN_ACK response
             if res.ack_seq == -999:
@@ -124,6 +136,10 @@ def main():
         run_server(cfg)
     except KeyboardInterrupt:
         print("\n[server] Interrupted by user")
+    except Exception as e:
+        print(f"\n[server] FATAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         print("[server] Cleanup complete")
         sys.exit(0)
