@@ -13,8 +13,8 @@ import struct
 # NETWORK CONSTANTS
 # ============================================================
 
-SERVER_PORT = 9000          # Server listens on this port
-CLIENT_PORT = 9001          # Client listens on this port (for ACKs/data back)
+SERVER_PORT = 5005          # Server listens on this port
+CLIENT_PORT = 5006          # Client listens on this port (for ACKs/data back)
 MTU = 1500                  # Standard Maximum Transmission Unit
 
 # ============================================================

@@ -15,12 +15,12 @@ echo "Server port: $SERVER_PORT"
 echo "Output: $OUTPUT_FILE"
 echo "================================================"
 
-# No sudo required for UDP sockets
-# (keeping check commented for reference)
-# if [ "$EUID" -ne 0 ]; then 
-#     echo "ERROR: Please run with sudo (raw sockets require root)"
-#     exit 1
-# fi
+# Check if running with sudo
+if [ "$EUID" -ne 0 ]; then 
+    echo "ERROR: Please run with sudo (raw sockets require root)"
+    echo "Usage: sudo ./scripts/run_local.sh [test_file]"
+    exit 1
+fi
 
 # Check if test file exists
 if [ ! -f "$TEST_FILE" ]; then
