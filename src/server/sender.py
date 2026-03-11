@@ -5,7 +5,8 @@ from typing import Tuple, Optional
 import socket
 from server.server_state import ServerState
 from common.packet import encode_packet
-from common.constants import FLAG_ACK, FLAG_SYN_ACK, FLAG_DATA, FLAG_FIN_DATA
+from common.constants import FLAG_ACK, FLAG_SYN_ACK, FLAG_DATA, FLAG_FIN_DATA, SERVER_PORT, CLIENT_PORT
+from common.rawsocket import send_packet
 
 ClientAddr = Tuple[str, int]
 
@@ -13,12 +14,27 @@ class Sender:
     def __init__(self, state: ServerState, sock: socket.socket):
         self.state = state
         self.sock = sock
+        # Get server's IP address for raw socket send_packet()
+        self.server_ip = self._get_local_ip()
+    
+    def _get_local_ip(self) -> str:
+        """Get server's local IP address"""
+        try:
+            # Create a temporary socket to determine local IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            return local_ip
+        except:
+            return '0.0.0.0'
 
     def send_ack(self, addr: ClientAddr, ack_seq: int) -> None:
         if ack_seq < 0:
             return
         pkt = self._build_ack(ack_seq)
-        self.sock.sendto(pkt, addr)
+        # Use send_packet for raw socket
+        send_packet(self.sock, pkt, self.server_ip, addr[0], SERVER_PORT, CLIENT_PORT)
         with self.state.lock:
             self.state.stats["pkts_out"] += 1
             self.state.stats["acks_out"] += 1
@@ -41,7 +57,8 @@ class Sender:
             payload=b'',
             conn_id=conn_id
         )
-        self.sock.sendto(pkt, addr)
+        # Use send_packet for raw socket
+        send_packet(self.sock, pkt, self.server_ip, addr[0], SERVER_PORT, CLIENT_PORT)
         with self.state.lock:
             self.state.stats["pkts_out"] += 1
 
@@ -55,7 +72,8 @@ class Sender:
             payload=payload,
             conn_id=conn_id
         )
-        self.sock.sendto(pkt, addr)
+        # Use send_packet for raw socket
+        send_packet(self.sock, pkt, self.server_ip, addr[0], SERVER_PORT, CLIENT_PORT)
         with self.state.lock:
             self.state.stats["pkts_out"] += 1
             self.state.stats["data_out"] += 1

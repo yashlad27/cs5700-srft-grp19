@@ -23,6 +23,33 @@ class Receiver:
         self.state = state
         self.wm = wm
 
+    def handle_decoded_packet(self, pkt: dict, addr: ClientAddr) -> ReceiveResult:
+        """Handle already-decoded packet from raw socket receive_packet()"""
+        with self.state.lock:
+            self.state.stats["pkts_in"] += 1
+            if self.state.client is None:
+                self.state.client = addr
+            elif self.state.client != addr:
+                return ReceiveResult()
+        
+        # Packet is already decoded and verified by receive_packet()
+        if pkt is None:
+            with self.state.lock:
+                self.state.stats["corrupt_in"] += 1
+            return ReceiveResult()
+        
+        # Dispatch by msg_type
+        if pkt["type"] == "DATA":
+            return self._on_data(pkt)
+        elif pkt["type"] == "FIN":
+            return ReceiveResult(close=True)
+        elif pkt["type"] == "SYN":
+            return self._on_syn(pkt)
+        elif pkt["type"] == "ACK":
+            return self._on_ack(pkt)
+        else:
+            return ReceiveResult()
+
     def handle_datagram(self, data: bytes, addr: ClientAddr) -> ReceiveResult:
         # 1) bind to single client (optional)
         with self.state.lock:

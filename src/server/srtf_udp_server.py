@@ -13,7 +13,7 @@ from server.window_manager import WindowManager
 from server.receiver import Receiver
 from server.sender import Sender
 from server.retransmit_queue import RetransmitQueue
-from common.rawsocket import create_recv_socket, create_send_socket
+from common.rawsocket import create_recv_socket, create_send_socket, receive_packet
 
 # Global flag for graceful shutdown
 shutdown_requested = False
@@ -30,12 +30,14 @@ def run_server(cfg: ServerConfig):
     state = ServerState(cfg=cfg)
     wm = WindowManager(window_size=cfg.window_size)
 
-    sock = create_recv_socket(cfg.listen_port)
-    sock.setblocking(False)
+    # Create separate send and receive raw sockets
+    recv_sock = create_recv_socket(cfg.listen_port)
+    recv_sock.setblocking(False)
+    send_sock = create_send_socket()
 
     receiver = Receiver(state, wm)
-    sender = Sender(state, sock)
-    rtx = RetransmitQueue(sock, cfg.rto_ms, cfg.max_retries)
+    sender = Sender(state, send_sock)
+    rtx = RetransmitQueue(send_sock, cfg.rto_ms, cfg.max_retries)
 
     print(f"[server] listening on {cfg.listen_ip}:{cfg.listen_port}")
     print("[server] Press Ctrl+C to stop")
@@ -45,11 +47,20 @@ def run_server(cfg: ServerConfig):
     
     while running and not shutdown_requested:
         # wait for data or timeout for retransmit tick
-        r, _, _ = select.select([sock], [], [], 0.01)
+        r, _, _ = select.select([recv_sock], [], [], 0.01)
 
         if r:
-            data, addr = sock.recvfrom(65535)
-            res = receiver.handle_datagram(data, addr)
+            # Use receive_packet() to parse raw socket data
+            result = receive_packet(recv_sock, cfg.listen_port, timeout=0)
+            if result is None:
+                continue
+            
+            packet_dict, sender_ip, src_port = result
+            # Reconstruct addr tuple for compatibility
+            addr = (sender_ip, src_port)
+            
+            # Pass the decoded packet to receiver (already parsed)
+            res = receiver.handle_decoded_packet(packet_dict, addr)
             
             # Handle SYN_ACK response
             if res.ack_seq == -999:
@@ -81,7 +92,8 @@ def run_server(cfg: ServerConfig):
 
         rtx.tick()
 
-    sock.close()
+    recv_sock.close()
+    send_sock.close()
     print("[server] stopped")
 
 
