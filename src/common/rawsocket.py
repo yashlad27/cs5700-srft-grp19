@@ -138,7 +138,7 @@ def build_udp_header(src_port: int, dst_port: int, payload_length: int) -> bytes
     udp_checksum = 0
 
     udp_header = struct.pack(
-        '!HHH', src_port, dst_port, udp_length, udp_checksum
+        '!HHHH', src_port, dst_port, udp_length, udp_checksum
     )
 
     return udp_header
