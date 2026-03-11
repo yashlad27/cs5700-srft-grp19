@@ -82,9 +82,7 @@ def receive_file(
                 send_packet(
                     send_sock,
                     ack_packet,
-                    src_ip=client_ip,
                     dst_ip=server_ip,
-                    src_port=CLIENT_PORT,
                     dst_port=SERVER_PORT
                 )
                 stats.record_ack_sent()
@@ -106,9 +104,7 @@ def receive_file(
                         send_packet(
                             send_sock,
                             fin_ack,
-                            src_ip=client_ip,
                             dst_ip=server_ip,
-                            src_port=CLIENT_PORT,
                             dst_port=SERVER_PORT
                         )
                         stats.record_send(len(fin_ack))

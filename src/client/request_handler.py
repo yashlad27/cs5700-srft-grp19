@@ -44,9 +44,7 @@ def send_syn_request(
         send_packet(
             send_sock,
             syn_packet,
-            src_ip=client_ip,
             dst_ip=server_ip,
-            src_port=CLIENT_PORT,
             dst_port=SERVER_PORT
         )
 
