@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import socket
 import select
+import signal
+import sys
 
 from server.server_state import ServerState, ServerConfig
 from server.window_manager import WindowManager
@@ -12,7 +14,18 @@ from server.receiver import Receiver
 from server.sender import Sender
 from server.retransmit_queue import RetransmitQueue
 
+# Global flag for graceful shutdown
+shutdown_requested = False
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C gracefully"""
+    global shutdown_requested
+    print("\n[server] Shutdown signal received (Ctrl+C), cleaning up...")
+    shutdown_requested = True
+
 def run_server(cfg: ServerConfig):
+    global shutdown_requested
+    
     state = ServerState(cfg=cfg)
     wm = WindowManager(window_size=cfg.window_size)
 
@@ -25,11 +38,12 @@ def run_server(cfg: ServerConfig):
     rtx = RetransmitQueue(sock, cfg.rto_ms, cfg.max_retries)
 
     print(f"[server] listening on {cfg.listen_ip}:{cfg.listen_port}")
+    print("[server] Press Ctrl+C to stop")
 
     running = True
     file_sent = False
     
-    while running:
+    while running and not shutdown_requested:
         # wait for data or timeout for retransmit tick
         r, _, _ = select.select([sock], [], [], 0.01)
 
@@ -72,6 +86,9 @@ def run_server(cfg: ServerConfig):
 
 
 def main():
+    # Register signal handler for Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)
+    
     # we can adjust this part if we need to upload it to aws.
     parser = argparse.ArgumentParser(description="SRTF UDP Server")
     parser.add_argument("--host", default="0.0.0.0")
@@ -90,7 +107,14 @@ def main():
         window_size=args.window,
         rto_ms=args.rto,
     )
-    run_server(cfg)
+    
+    try:
+        run_server(cfg)
+    except KeyboardInterrupt:
+        print("\n[server] Interrupted by user")
+    finally:
+        print("[server] Cleanup complete")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
