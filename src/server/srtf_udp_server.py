@@ -27,6 +27,8 @@ def run_server(cfg: ServerConfig):
     print(f"[server] listening on {cfg.listen_ip}:{cfg.listen_port}")
 
     running = True
+    file_sent = False
+    
     while running:
         # wait for data or timeout for retransmit tick
         r, _, _ = select.select([sock], [], [], 0.01)
@@ -34,9 +36,33 @@ def run_server(cfg: ServerConfig):
         if r:
             data, addr = sock.recvfrom(65535)
             res = receiver.handle_datagram(data, addr)
-            if res.ack_seq is not None:
+            
+            # Handle SYN_ACK response
+            if res.ack_seq == -999:
+                conn_id = state.sec.conn_id
+                filename = state.file_ctx.filename
+                
+                # Send SYN_ACK
+                sender.send_syn_ack(addr, conn_id)
+                print(f"[server] Sent SYN_ACK to {addr}")
+                
+                # Send file
+                import os
+                filepath = os.path.join(cfg.out_dir, filename)
+                if os.path.exists(filepath):
+                    sender.send_file(addr, filepath, cfg.chunk_size, conn_id)
+                    file_sent = True
+                else:
+                    print(f"[server] ERROR: File not found: {filepath}")
+                    running = False
+            
+            # Handle normal ACKs
+            elif res.ack_seq is not None and res.ack_seq >= 0:
                 sender.send_ack(addr, res.ack_seq)
+            
+            # Handle close
             if res.close:
+                print("[server] Received FIN, closing connection")
                 running = False
 
         rtx.tick()

@@ -31,3 +31,65 @@ class Sender:
             payload=b'',
             conn_id=0
         )
+
+    def send_syn_ack(self, addr: ClientAddr, conn_id: int) -> None:
+        """Send SYN_ACK to acknowledge client connection request"""
+        pkt = encode_packet(
+            seq_num=0,
+            ack_num=0,
+            flags=FLAG_SYN_ACK,
+            payload=b'',
+            conn_id=conn_id
+        )
+        self.sock.sendto(pkt, addr)
+        with self.state.lock:
+            self.state.stats["pkts_out"] += 1
+
+    def send_data_chunk(self, addr: ClientAddr, seq: int, payload: bytes, conn_id: int, is_last: bool = False) -> None:
+        """Send a single data chunk to client"""
+        flags = FLAG_FIN_DATA if is_last else FLAG_DATA
+        pkt = encode_packet(
+            seq_num=seq,
+            ack_num=0,
+            flags=flags,
+            payload=payload,
+            conn_id=conn_id
+        )
+        self.sock.sendto(pkt, addr)
+        with self.state.lock:
+            self.state.stats["pkts_out"] += 1
+            self.state.stats["data_out"] += 1
+
+    def send_file(self, addr: ClientAddr, filepath: str, chunk_size: int, conn_id: int) -> None:
+        """
+        Read file and send it in chunks to the client
+        Uses window manager and retransmit queue for reliability
+        """
+        import os
+        import time
+        from common.constants import MAX_PAYLOAD_SIZE
+        
+        if not os.path.exists(filepath):
+            print(f"[server] ERROR: File not found: {filepath}")
+            return
+        
+        file_size = os.path.getsize(filepath)
+        total_chunks = (file_size + chunk_size - 1) // chunk_size
+        
+        print(f"[server] Sending file: {filepath} ({file_size} bytes, {total_chunks} chunks)")
+        
+        seq = 0
+        with open(filepath, 'rb') as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                
+                is_last = (seq == total_chunks - 1)
+                self.send_data_chunk(addr, seq, chunk, conn_id, is_last)
+                
+                seq += 1
+                
+                time.sleep(0.001)
+        
+        print(f"[server] File sent: {total_chunks} chunks")
