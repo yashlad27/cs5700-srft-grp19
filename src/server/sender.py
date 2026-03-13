@@ -78,40 +78,100 @@ class Sender:
             self.state.stats["pkts_out"] += 1
             self.state.stats["data_out"] += 1
 
-    def send_file(self, addr: ClientAddr, filepath: str, chunk_size: int, conn_id: int) -> None:
+    def prepare_file_transfer(self, addr: ClientAddr, filepath: str, chunk_size: int,
+                              conn_id: int, rtx) -> bool:
         """
-        Read file and send it in chunks to the client
-        Uses window manager and retransmit queue for reliability
+        Pre-read file into chunks and initialize windowed sending state.
+        Returns False if file not found.
         """
         import os
-        import time
-        from common.constants import MAX_PAYLOAD_SIZE
-        
+
         if not os.path.exists(filepath):
             print(f"[server] ERROR: File not found: {filepath}")
-            return
-        
+            return False
+
         file_size = os.path.getsize(filepath)
-        total_chunks = (file_size + chunk_size - 1) // chunk_size
-        
-        with self.state.lock:
-            self.state.file_ctx.file_size = file_size
-        self.state.start_transfer_timer()
-        
-        print(f"[server] Sending file: {filepath} ({file_size} bytes, {total_chunks} chunks)")
-        
-        seq = 0
+
+        # Pre-read all chunks
+        chunks = []
         with open(filepath, 'rb') as f:
             while True:
                 chunk = f.read(chunk_size)
                 if not chunk:
                     break
-                
-                is_last = (seq == total_chunks - 1)
-                self.send_data_chunk(addr, seq, chunk, conn_id, is_last)
-                
-                seq += 1
-                
-                time.sleep(0.001)
-        
-        print(f"[server] File sent: {total_chunks} chunks")
+                chunks.append(chunk)
+
+        total_chunks = len(chunks)
+
+        with self.state.lock:
+            self.state.file_ctx.file_size = file_size
+        self.state.start_transfer_timer()
+
+        self._transfer = {
+            'addr': addr,
+            'conn_id': conn_id,
+            'chunks': chunks,
+            'total_chunks': total_chunks,
+            'base': 0,          # oldest unacked seq
+            'next_seq': 0,      # next seq to send
+            'window_size': self.state.cfg.window_size,
+            'rtx': rtx,
+            'active': True,
+        }
+
+        print(f"[server] Sending file: {filepath} ({file_size} bytes, {total_chunks} chunks, window={self.state.cfg.window_size})")
+        return True
+
+    def send_next_chunks(self) -> None:
+        """Send as many chunks as the window allows. Non-blocking."""
+        if not self.is_transfer_active():
+            return
+
+        t = self._transfer
+        while (t['next_seq'] < t['total_chunks'] and
+               t['next_seq'] < t['base'] + t['window_size']):
+            seq = t['next_seq']
+            payload = t['chunks'][seq]
+            is_last = (seq == t['total_chunks'] - 1)
+
+            # Build and send
+            self.send_data_chunk(t['addr'], seq, payload, t['conn_id'], is_last)
+
+            # Build packet bytes for RTX queue
+            flags = FLAG_FIN_DATA if is_last else FLAG_DATA
+            pkt_bytes = encode_packet(
+                seq_num=seq, ack_num=0, flags=flags,
+                payload=payload, conn_id=t['conn_id']
+            )
+            t['rtx'].add(str(seq), pkt_bytes, t['addr'][0])
+
+            t['next_seq'] += 1
+
+    def handle_data_ack(self, ack_num: int) -> None:
+        """
+        Process cumulative ACK from client.
+        Client sends ack_num = next expected seq, meaning it has all seqs < ack_num.
+        """
+        if not self.is_transfer_active():
+            return
+
+        t = self._transfer
+        if ack_num > t['base']:
+            # ACK all seqs from old base up to ack_num
+            for seq in range(t['base'], ack_num):
+                t['rtx'].ack(str(seq))
+            old_base = t['base']
+            t['base'] = ack_num
+
+        # Check if all chunks acknowledged
+        if t['base'] >= t['total_chunks']:
+            t['active'] = False
+            print(f"[server] All {t['total_chunks']} chunks acknowledged by client")
+
+    def is_transfer_active(self) -> bool:
+        return hasattr(self, '_transfer') and self._transfer is not None and self._transfer.get('active', False)
+
+    def is_transfer_complete(self) -> bool:
+        return (hasattr(self, '_transfer') and self._transfer is not None and
+                not self._transfer.get('active', True) and
+                self._transfer.get('base', 0) >= self._transfer.get('total_chunks', 0))

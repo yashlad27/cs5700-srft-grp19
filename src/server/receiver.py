@@ -17,6 +17,7 @@ ClientAddr = Tuple[str, int]
 class ReceiveResult:
     ack_seq: Optional[int] = None
     close: bool = False
+    data_ack: Optional[int] = None  # client ACKed all seqs < this value
 
 class Receiver:
     def __init__(self, state: ServerState, wm: WindowManager):
@@ -175,9 +176,9 @@ class Receiver:
 
     def _on_ack(self, pkt) -> ReceiveResult:
         """Handle ACK from client - update window, trigger retransmits if needed"""
-        ack_num = pkt["ack_num"]
+        ack_num = pkt.get("ack_num", pkt.get("ack", 0))
         
         with self.state.lock:
             self.state.stats["acks_in"] += 1
         
-        return ReceiveResult()
+        return ReceiveResult(data_ack=ack_num)

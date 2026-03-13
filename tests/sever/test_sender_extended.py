@@ -9,6 +9,7 @@ import pytest
 
 from server.sender import Sender
 from server.server_state import ServerConfig, ServerState
+from server.retransmit_queue import RetransmitQueue
 from common.constants import FLAG_SYN_ACK, FLAG_DATA, FLAG_FIN_DATA
 
 
@@ -138,41 +139,41 @@ class TestSendDataChunk:
 class TestSendFile:
     def test_send_file_single_chunk(self, tmp_path):
         """Test sending file that fits in single chunk"""
-        # Create test file
         test_file = tmp_path / "small.bin"
         test_data = b"Hello World!"
         test_file.write_bytes(test_data)
         
         state = make_state(tmp_path)
         mock_socket = Mock()
+        rtx = RetransmitQueue(sock=Mock(), rto_ms=500, max_retries=10)
         
         with patch("server.sender.send_packet") as mock_send:
             sender = Sender(state=state, sock=mock_socket)
             addr = ("10.0.0.5", 6000)
             
-            sender.send_file(addr, str(test_file), chunk_size=100, conn_id=50)
+            sender.prepare_file_transfer(addr, str(test_file), chunk_size=100, conn_id=50, rtx=rtx)
+            sender.send_next_chunks()
             
-            # Should send 1 chunk
             assert mock_send.call_count == 1
             assert state.stats["pkts_out"] == 1
             assert state.stats["data_out"] == 1
     
     def test_send_file_multiple_chunks(self, tmp_path):
         """Test sending file that requires multiple chunks"""
-        # Create larger test file
         test_file = tmp_path / "large.bin"
         test_data = b"X" * 250  # 250 bytes
         test_file.write_bytes(test_data)
         
         state = make_state(tmp_path)
         mock_socket = Mock()
+        rtx = RetransmitQueue(sock=Mock(), rto_ms=500, max_retries=10)
         
         with patch("server.sender.send_packet") as mock_send:
             sender = Sender(state=state, sock=mock_socket)
             addr = ("10.0.0.5", 6000)
             
-            # Use small chunk size to force multiple chunks
-            sender.send_file(addr, str(test_file), chunk_size=100, conn_id=75)
+            sender.prepare_file_transfer(addr, str(test_file), chunk_size=100, conn_id=75, rtx=rtx)
+            sender.send_next_chunks()
             
             # Should send 3 chunks (100 + 100 + 50)
             assert mock_send.call_count == 3
@@ -183,32 +184,33 @@ class TestSendFile:
         """Test sending non-existent file"""
         state = make_state(tmp_path)
         mock_socket = Mock()
+        rtx = RetransmitQueue(sock=Mock(), rto_ms=500, max_retries=10)
         
         with patch("server.sender.send_packet") as mock_send:
             sender = Sender(state=state, sock=mock_socket)
             addr = ("10.0.0.1", 5000)
             
-            # Try to send non-existent file
-            sender.send_file(addr, "/nonexistent/file.bin", chunk_size=100, conn_id=1)
+            result = sender.prepare_file_transfer(addr, "/nonexistent/file.bin", chunk_size=100, conn_id=1, rtx=rtx)
             
-            # Should not send any packets
+            assert result is False
             assert mock_send.call_count == 0
             assert state.stats["pkts_out"] == 0
     
     def test_send_empty_file(self, tmp_path):
         """Test sending empty file"""
-        # Create empty file
         test_file = tmp_path / "empty.bin"
         test_file.write_bytes(b"")
         
         state = make_state(tmp_path)
         mock_socket = Mock()
+        rtx = RetransmitQueue(sock=Mock(), rto_ms=500, max_retries=10)
         
         with patch("server.sender.send_packet") as mock_send:
             sender = Sender(state=state, sock=mock_socket)
             addr = ("10.0.0.1", 5000)
             
-            sender.send_file(addr, str(test_file), chunk_size=100, conn_id=10)
+            sender.prepare_file_transfer(addr, str(test_file), chunk_size=100, conn_id=10, rtx=rtx)
+            sender.send_next_chunks()
             
             # Should not send any packets for empty file
             assert mock_send.call_count == 0
@@ -217,27 +219,32 @@ class TestSendFile:
     @patch("server.sender.encode_packet")
     def test_send_file_last_chunk_marked(self, mock_encode, mock_send, tmp_path):
         """Test that last chunk is marked with FIN_DATA flag"""
-        # Create test file
         test_file = tmp_path / "test.bin"
         test_file.write_bytes(b"A" * 150)  # 150 bytes
         
         state = make_state(tmp_path)
         mock_socket = Mock()
         mock_encode.return_value = b"packet"
+        rtx = RetransmitQueue(sock=Mock(), rto_ms=500, max_retries=10)
         
         sender = Sender(state=state, sock=mock_socket)
         addr = ("10.0.0.1", 5000)
         
-        sender.send_file(addr, str(test_file), chunk_size=100, conn_id=99)
+        sender.prepare_file_transfer(addr, str(test_file), chunk_size=100, conn_id=99, rtx=rtx)
+        sender.send_next_chunks()
         
         # Check that last call used FIN_DATA flag
+        # encode_packet called 4 times: (send+RTX) per chunk
+        # Order: send_data_chunk(seq0), RTX(seq0), send_data_chunk(seq1), RTX(seq1)
         calls = mock_encode.call_args_list
-        assert len(calls) == 2  # Should be 2 chunks
+        assert len(calls) == 4
         
-        # First chunk should be DATA
+        # First chunk (seq0): DATA flag
         assert calls[0][1]['flags'] == FLAG_DATA
-        # Last chunk should be FIN_DATA
-        assert calls[1][1]['flags'] == FLAG_FIN_DATA
+        assert calls[1][1]['flags'] == FLAG_DATA
+        # Last chunk (seq1): FIN_DATA flag
+        assert calls[2][1]['flags'] == FLAG_FIN_DATA
+        assert calls[3][1]['flags'] == FLAG_FIN_DATA
 
 
 class TestGetLocalIP:

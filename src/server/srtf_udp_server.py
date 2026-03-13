@@ -13,7 +13,8 @@ from server.window_manager import WindowManager
 from server.receiver import Receiver
 from server.sender import Sender
 from server.retransmit_queue import RetransmitQueue
-from common.rawsocket import create_recv_socket, create_send_socket, receive_packet
+from common.rawsocket import create_recv_socket, create_send_socket, receive_packet, send_packet
+from common.constants import SERVER_PORT, CLIENT_PORT
 
 # Global flag for graceful shutdown
 shutdown_requested = False
@@ -40,69 +41,77 @@ def run_server(cfg: ServerConfig):
 
     receiver = Receiver(state, wm)
     sender = Sender(state, send_sock)
-    rtx = RetransmitQueue(send_sock, cfg.rto_ms, cfg.max_retries, server_state=state)
+
+    # Create retransmit send function for raw sockets
+    def rtx_send(pkt_bytes, dst_ip):
+        send_packet(send_sock, pkt_bytes, sender.server_ip, dst_ip, SERVER_PORT, CLIENT_PORT)
+        with state.lock:
+            state.stats["pkts_out"] += 1
+
+    rtx = RetransmitQueue(
+        rto_ms=cfg.rto_ms,
+        max_retries=cfg.max_retries,
+        server_state=state,
+        send_func=rtx_send
+    )
 
     print(f"[server] listening on {cfg.listen_ip}:{cfg.listen_port}")
     print("[server] Press Ctrl+C to stop")
 
     running = True
-    file_sent = False
+    client_addr = None
     
     while running and not shutdown_requested:
+        # If transfer is active, send chunks within window
+        if sender.is_transfer_active():
+            sender.send_next_chunks()
+
         # wait for data or timeout for retransmit tick
         r, _, _ = select.select([recv_sock], [], [], 0.01)
 
         if r:
-            print("[DEBUG] Socket has data, calling receive_packet()")
-            # Use receive_packet() to parse raw socket data
             try:
                 result = receive_packet(recv_sock, cfg.listen_port, timeout=0)
-                print(f"[DEBUG] receive_packet returned: {result is not None}")
                 if result is None:
-                    print("[DEBUG] Packet filtered out or timeout")
                     continue
                 
                 packet_dict, sender_ip, src_port = result
-                print(f"[DEBUG] Packet from {sender_ip}:{src_port}, type={packet_dict.get('type', 'UNKNOWN')}")
-                # Reconstruct addr tuple for compatibility
                 addr = (sender_ip, src_port)
                 
-                # Pass the decoded packet to receiver (already parsed)
-                print(f"[DEBUG] Calling handle_decoded_packet()")
                 res = receiver.handle_decoded_packet(packet_dict, addr)
-                print(f"[DEBUG] handle_decoded_packet returned: ack_seq={res.ack_seq}, close={res.close}")
             except Exception as e:
-                print(f"[DEBUG] EXCEPTION in packet handling: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"[server] Error handling packet: {e}")
                 continue
             
-            # Handle SYN_ACK response
+            # Handle SYN → send SYN_ACK and prepare file transfer
             if res.ack_seq == -999:
+                import os
                 conn_id = state.sec.conn_id
                 filename = state.file_ctx.filename
+                client_addr = addr
                 
-                # Send SYN_ACK
                 sender.send_syn_ack(addr, conn_id)
                 print(f"[server] Sent SYN_ACK to {addr}")
                 
-                # Send file
-                import os
                 filepath = os.path.join(cfg.out_dir, filename)
-                if os.path.exists(filepath):
-                    sender.send_file(addr, filepath, cfg.chunk_size, conn_id)
-                    file_sent = True
+                if sender.prepare_file_transfer(addr, filepath, cfg.chunk_size, conn_id, rtx):
+                    # Initial burst of chunks will happen at top of next loop iteration
+                    pass
                 else:
                     print(f"[server] ERROR: File not found: {filepath}")
                     running = False
             
-            # Handle normal ACKs
+            # Handle cumulative ACK from client → slide window
+            if res.data_ack is not None:
+                sender.handle_data_ack(res.data_ack)
+            
+            # Handle ACK for receiver-side data (if server is receiving)
             elif res.ack_seq is not None and res.ack_seq >= 0:
                 sender.send_ack(addr, res.ack_seq)
             
-            # Handle close
+            # Handle close (FIN / FIN_ACK)
             if res.close:
-                print("[server] Received FIN, closing connection")
+                print("[server] Received FIN/FIN_ACK, closing connection")
                 state.stop_transfer_timer()
                 running = False
 
