@@ -56,6 +56,8 @@ class ServerState:
         "pkts_in": 0,
         "pkts_out": 0,
         "data_in": 0,
+        "data_out": 0,
+        "acks_in": 0,
         "acks_out": 0,
         "dup_in": 0,
         "corrupt_in": 0,
