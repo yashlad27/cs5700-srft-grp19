@@ -41,7 +41,9 @@ class Receiver:
         # Dispatch by msg_type
         if pkt["type"] == "DATA":
             return self._on_data(pkt)
-        elif pkt["type"] == "FIN":
+        elif pkt["type"] == "FIN_DATA":
+            return self._on_data(pkt)
+        elif pkt["type"] in ("FIN", "FIN_ACK"):
             return ReceiveResult(close=True)
         elif pkt["type"] == "SYN":
             return self._on_syn(pkt)
@@ -70,7 +72,9 @@ class Receiver:
         # 3) dispatch by msg_type
         if pkt["type"] == "DATA":
             return self._on_data(pkt)
-        elif pkt["type"] == "FIN":
+        elif pkt["type"] == "FIN_DATA":
+            return self._on_data(pkt)
+        elif pkt["type"] in ("FIN", "FIN_ACK"):
             return ReceiveResult(close=True)
         elif pkt["type"] == "SYN":
             return self._on_syn(pkt)
