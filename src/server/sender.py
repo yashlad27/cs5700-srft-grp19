@@ -94,6 +94,10 @@ class Sender:
         file_size = os.path.getsize(filepath)
         total_chunks = (file_size + chunk_size - 1) // chunk_size
         
+        with self.state.lock:
+            self.state.file_ctx.file_size = file_size
+        self.state.start_transfer_timer()
+        
         print(f"[server] Sending file: {filepath} ({file_size} bytes, {total_chunks} chunks)")
         
         seq = 0

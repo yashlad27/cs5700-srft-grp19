@@ -20,12 +20,13 @@ class _Item:
     retries: int = field(compare=False, default=0)
 
 class RetransmitQueue:
-    def __init__(self, sock: socket.socket, rto_ms: int, max_retries: int):
+    def __init__(self, sock: socket.socket, rto_ms: int, max_retries: int, server_state=None):
         self.sock = sock
         self.rto = rto_ms / 1000.0
         self.max_retries = max_retries
         self.heap: list[_Item] = []
         self.items: Dict[str, _Item] = {}
+        self.server_state = server_state
 
     def add(self, key: str, payload: bytes, addr: ClientAddr) -> None:
         item = _Item(deadline=time.time() + self.rto, key=key, payload=payload, addr=addr)
@@ -51,3 +52,6 @@ class RetransmitQueue:
             cur.retries += 1
             cur.deadline = now + self.rto
             heapq.heappush(self.heap, cur)
+            if self.server_state is not None:
+                with self.server_state.lock:
+                    self.server_state.stats["retransmitted"] += 1

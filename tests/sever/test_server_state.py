@@ -67,6 +67,7 @@ def test_server_state_initial_defaults(tmp_path):
         "corrupt_in": 0,
         "out_of_order_in": 0,
         "delivered": 0,
+        "retransmitted": 0,
     }
     assert state.stats == expected_stats
 
@@ -147,3 +148,75 @@ def test_security_context_fields_can_be_updated():
     assert sec.keys["k_enc"] == b"secret"
     assert sec.highest_pn == 100
     assert 100 in sec.seen_pn
+
+
+def test_file_receive_context_file_size_default():
+    ctx = FileReceiveContext()
+    assert ctx.file_size == 0
+
+
+def test_transfer_timer(tmp_path):
+    import time
+    cfg = ServerConfig(out_dir=str(tmp_path / "received"))
+    state = ServerState(cfg=cfg)
+
+    assert state.get_transfer_duration() == 0.0
+
+    state.start_transfer_timer()
+    time.sleep(0.05)
+    state.stop_transfer_timer()
+
+    duration = state.get_transfer_duration()
+    assert duration >= 0.04
+    assert duration < 1.0
+
+
+def test_format_duration(tmp_path):
+    cfg = ServerConfig(out_dir=str(tmp_path / "received"))
+    state = ServerState(cfg=cfg)
+
+    assert state.format_duration(0) == "00:00:00"
+    assert state.format_duration(61) == "00:01:01"
+    assert state.format_duration(3661) == "01:01:01"
+    assert state.format_duration(7200.5) == "02:00:00"
+
+
+def test_write_stats_report(tmp_path):
+    cfg = ServerConfig(out_dir=str(tmp_path / "received"))
+    state = ServerState(cfg=cfg)
+    state.file_ctx.filename = "test_file.bin"
+    state.file_ctx.file_size = 10240
+    state.stats["pkts_out"] = 15
+    state.stats["retransmitted"] = 2
+    state.stats["pkts_in"] = 12
+    state.transfer_start = 1000.0
+    state.transfer_end = 1005.0
+
+    output_path = str(tmp_path / "stats.txt")
+    report = state.write_stats_report(output_path=output_path)
+
+    assert "Name of the transferred file: test_file.bin" in report
+    assert "Size of the transferred file: 10240" in report
+    assert "packets sent from the server: 15" in report
+    assert "retransmitted packets from the server: 2" in report
+    assert "packets received from the client: 12" in report
+    assert "00:00:05" in report
+
+    with open(output_path) as f:
+        contents = f.read()
+    assert contents == report
+
+
+def test_write_stats_report_default_path(tmp_path):
+    cfg = ServerConfig(out_dir=str(tmp_path / "received"))
+    state = ServerState(cfg=cfg)
+    state.file_ctx.filename = "data.bin"
+    state.transfer_start = 0.0
+    state.transfer_end = 0.0
+
+    report = state.write_stats_report()
+
+    expected_path = tmp_path / "received" / "transfer_stats.txt"
+    assert expected_path.exists()
+    with open(expected_path) as f:
+        assert f.read() == report

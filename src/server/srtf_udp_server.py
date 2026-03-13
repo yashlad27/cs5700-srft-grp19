@@ -37,7 +37,7 @@ def run_server(cfg: ServerConfig):
 
     receiver = Receiver(state, wm)
     sender = Sender(state, send_sock)
-    rtx = RetransmitQueue(send_sock, cfg.rto_ms, cfg.max_retries)
+    rtx = RetransmitQueue(send_sock, cfg.rto_ms, cfg.max_retries, server_state=state)
 
     print(f"[server] listening on {cfg.listen_ip}:{cfg.listen_port}")
     print("[server] Press Ctrl+C to stop")
@@ -100,9 +100,17 @@ def run_server(cfg: ServerConfig):
             # Handle close
             if res.close:
                 print("[server] Received FIN, closing connection")
+                state.stop_transfer_timer()
                 running = False
 
         rtx.tick()
+
+    # Close file handle if open
+    if state.file_ctx.fp is not None:
+        state.file_ctx.fp.close()
+
+    # Write stats report
+    state.write_stats_report()
 
     recv_sock.close()
     send_sock.close()
