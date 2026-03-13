@@ -76,12 +76,35 @@ def decode_packet(raw_data: bytes) -> dict | None:
     if not verify_checksum(header_no_checksum + payload, checksum):
         return None
     
+    # Determine packet type from flags
+    from common.constants import FLAG_SYN, FLAG_ACK, FLAG_FIN, FLAG_DATA, FLAG_SYN_ACK, FLAG_FIN_DATA, FLAG_FIN_ACK
+    
+    if flags == FLAG_SYN:
+        pkt_type = "SYN"
+    elif flags == FLAG_SYN_ACK:
+        pkt_type = "SYN_ACK"
+    elif flags == FLAG_ACK:
+        pkt_type = "ACK"
+    elif flags == FLAG_DATA:
+        pkt_type = "DATA"
+    elif flags == FLAG_FIN:
+        pkt_type = "FIN"
+    elif flags == FLAG_FIN_DATA:
+        pkt_type = "FIN_DATA"
+    elif flags == FLAG_FIN_ACK:
+        pkt_type = "FIN_ACK"
+    else:
+        pkt_type = "UNKNOWN"
+    
     return {
+        'seq': seq_num,       # Use 'seq' for consistency
+        'ack': ack_num,       # Use 'ack' for consistency
         'seq_num': seq_num,
         'ack_num': ack_num,
         'checksum': checksum,
         'payload_length': payload_length,
         'flags': flags,
+        'type': pkt_type,
         'conn_id': conn_id,
         'payload': payload
     }
