@@ -24,10 +24,13 @@ def signal_handler(signum, frame):
     print("\n[server] Shutdown signal received (Ctrl+C), cleaning up...")
     shutdown_requested = True
 
+_server_state = None  # module-level ref for cleanup on interrupt
+
 def run_server(cfg: ServerConfig):
-    global shutdown_requested
+    global shutdown_requested, _server_state
     
     state = ServerState(cfg=cfg)
+    _server_state = state
     wm = WindowManager(window_size=cfg.window_size)
 
     # Create separate send and receive raw sockets
@@ -129,6 +132,7 @@ def main():
     parser.add_argument("--chunk", type=int, default=1200)
     parser.add_argument("--window", type=int, default=64)
     parser.add_argument("--rto", type=int, default=200, help="retransmit timeout (ms)")
+    parser.add_argument("--stats-out", default=None, help="path for server output/stats file")
     args = parser.parse_args()
 
     cfg = ServerConfig(
@@ -138,6 +142,7 @@ def main():
         chunk_size=args.chunk,
         window_size=args.window,
         rto_ms=args.rto,
+        stats_out=args.stats_out,
     )
     
     try:

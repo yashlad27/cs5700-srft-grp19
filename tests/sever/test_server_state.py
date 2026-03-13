@@ -216,7 +216,7 @@ def test_write_stats_report_default_path(tmp_path):
 
     report = state.write_stats_report()
 
-    expected_path = tmp_path / "received" / "transfer_stats.txt"
+    expected_path = tmp_path / "received" / "server_output.txt"
     assert expected_path.exists()
     with open(expected_path) as f:
         assert f.read() == report

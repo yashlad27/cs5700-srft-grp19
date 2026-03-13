@@ -20,6 +20,7 @@ class ServerConfig:
     recv_buffer_limit: int = 4096  # max cached out-of-order packets
     rto_ms: int = 200              # retransmit timeout
     max_retries: int = 20
+    stats_out: Optional[str] = None   # path for stats output file
 
 @dataclass
 class SecurityContext:
@@ -107,13 +108,16 @@ class ServerState:
             f"The number of packets sent from the server: {self.stats['pkts_out']}",
             f"The number of retransmitted packets from the server: {self.stats['retransmitted']}",
             f"The number of packets received from the client: {self.stats['pkts_in']}",
-            f"The time duration of the file transfer ({duration_str}): {duration:.2f}s",
+            f"The time duration of the file transfer ({duration_str}):",
         ]
         report = "\n".join(report_lines) + "\n"
 
         if output_path is None:
-            out_dir = self.ensure_out_dir()
-            output_path = str(out_dir / "transfer_stats.txt")
+            if self.cfg.stats_out:
+                output_path = self.cfg.stats_out
+            else:
+                out_dir = self.ensure_out_dir()
+                output_path = str(out_dir / "server_output.txt")
 
         with open(output_path, "w") as f:
             f.write(report)
